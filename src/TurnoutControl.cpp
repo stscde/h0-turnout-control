@@ -3,7 +3,7 @@
 #include <IotWebConf.h>
 #include <IotWebConfUsing.h> // This loads aliases for easier class names.
 
-// ### Network and modbus #####################################################
+// ### Network ################################################################
 // ############################################################################
 
 // Name server
@@ -26,7 +26,7 @@ boolean connected = false;
 
 // IotWebConf: Modifying the config version will probably cause a loss of the
 // existig configuration. Be careful!
-const char *CONFIG_VERSION = "1.0.0";
+const char *CONFIG_VERSION = "1.0.1";
 
 // IotWebConf: Access point SSID
 const char *WIFI_AP_SSID = "TurnoutControl";
@@ -51,13 +51,14 @@ IotWebConf iotWebConf(WIFI_AP_SSID, &dnsServer, &server, WIFI_AP_DEFAULT_PASSWOR
 // Parameter group for turnout settings
 IotWebConfParameterGroup groupTurnout = IotWebConfParameterGroup("groupTurnout", "Turnout Settings");
 
-// Turnout 1 straight
-char turnout1StraightParamValue[16];
-IotWebConfNumberParameter turnout1StraightParam = IotWebConfNumberParameter("Turnout 1 straight", "turnout1Straight", turnout1StraightParamValue, 16, "700", "1..1500", "min='1' max='1500' step='1'");
+// ### Turnout values #########################################################
+// ############################################################################
 
-// Turnout 1 turn
-char turnout1TurnParamValue[16];
-IotWebConfNumberParameter turnout1TurnParam = IotWebConfNumberParameter("Turnout 1 turn", "turnout1Turn", turnout1TurnParamValue, 16, "700", "1..1500", "min='1' max='1500' step='1'");
+const int TURNOUT_COUNT = 10;
+
+char turnoutParamValues[TURNOUT_COUNT][2][16];
+
+IotWebConfNumberParameter *turnoutParams[TURNOUT_COUNT][2];
 
 // ### Setup ##################################################################
 // ############################################################################
@@ -69,15 +70,34 @@ void setup() {
     Serial.println("Starting up...");
 
     // -- Initializing the configuration.
-    groupTurnout.addItem(&turnout1StraightParam);
-    groupTurnout.addItem(&turnout1TurnParam);
+    for (int t = 0; t < TURNOUT_COUNT; t++) {
+        int tNr = t + 1;
+
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%s%i%s", "Turnout ", tNr, " straight");
+
+        char buf2[24];
+        snprintf(buf2, sizeof(buf2), "%s%i", "turnoutStraight", t);
+
+        Serial.println(buf);
+        Serial.println(buf2);
+
+        turnoutParams[t][0] = new IotWebConfNumberParameter(buf, buf2, turnoutParamValues[t][0], 16, "701", "1..1500", "min='1' max='1500' step='1'");
+
+        groupTurnout.addItem(turnoutParams[t][0]);
+    }
+
+    Serial.println("turnouts added");
     iotWebConf.addParameterGroup(&groupTurnout);
 
     iotWebConf.setWifiConnectionCallback(&wifiConnected);
     iotWebConf.setConfigSavedCallback(&configSaved);
     iotWebConf.setStatusPin(LED_BUILTIN);
     // iotWebConf.setConfigPin(D5);
+
+    Serial.println("init web config");
     iotWebConf.init();
+    Serial.println("init done");
 
     // -- Set up required URL handlers on the web server.
     server.on("/", handleRoot);
@@ -85,6 +105,9 @@ void setup() {
     server.onNotFound([]() { iotWebConf.handleNotFound(); });
 
     Serial.println("setup done");
+
+    //   iotWebConf.getSystemParameterGroup()->applyDefaultValue();
+    //   iotWebConf.saveConfig();
 }
 
 // ### Main ###################################################################
@@ -133,10 +156,18 @@ void handleRoot() {
     s += "<ul>";
     s += "<li>String param value: ";
     s += "NOT IN USE";
-    s += "<li>Int param value: ";
-    s += atoi(turnout1StraightParamValue);
-    s += "<li>Float param value: ";
-    s += atoi(turnout1TurnParamValue);
+
+    // -- Initializing the configuration.
+    //    for (int t = 0; t < TURNOUT_COUNT; t++) {
+    // int tNr = t + 1;
+
+    // s += "<li>Turnout straight: ";
+    //         s += ": " + atoi(turnoutParamValues[t][0]);
+
+    //       s += "<li>Turnout turn: " + tNr;
+    //        s += ": " + atoi(turnoutParamValues[t][1]);
+    //    }
+
     s += "</ul>";
     s += "Go to <a href='config'>configure page</a> to change values.";
     s += "</body></html>\n";
