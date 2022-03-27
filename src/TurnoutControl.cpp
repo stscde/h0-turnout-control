@@ -26,7 +26,7 @@ boolean connected = false;
 
 // IotWebConf: Modifying the config version will probably cause a loss of the
 // existig configuration. Be careful!
-const char *CONFIG_VERSION = "1.0.1";
+const char *CONFIG_VERSION = "1.0.0";
 
 // IotWebConf: Access point SSID
 const char *WIFI_AP_SSID = "TurnoutControl";
@@ -54,11 +54,24 @@ IotWebConfParameterGroup groupTurnout = IotWebConfParameterGroup("groupTurnout",
 // ### Turnout values #########################################################
 // ############################################################################
 
+// number of turnouts supported
 const int TURNOUT_COUNT = 10;
 
-char turnoutParamValues[TURNOUT_COUNT][2][16];
+// parsed turnout values from parameters, 0 = straight value 1 = divergent value
+int turnoutParamValues[TURNOUT_COUNT][2];
 
-IotWebConfNumberParameter *turnoutParams[TURNOUT_COUNT][2];
+// Values for turnouts in straight direction, comma separated, first value is turnout 1
+char turnoutStraightParamValue[40] = {""};
+IotWebConfTextParameter turnoutStraightParam = IotWebConfTextParameter("Turnout straight values", "turnoutStraightValues", turnoutStraightParamValue, 40, "101,102,103,104,105,106,107,108,109,110");
+
+// Values for turnouts in divergent direction, comma separated, first value is turnout 1
+char turnoutDivParamValue[40] = {""};
+IotWebConfTextParameter turnoutDivParam = IotWebConfTextParameter("Turnout divergent values", "turnoutDivValues", turnoutDivParamValue, 40, "201,202,203,204,205,206,207,208,209,210");
+
+/**
+ * Parse turnout values from straight and divergent parameter values
+ */
+void parseTurnoutValues();
 
 // ### Setup ##################################################################
 // ############################################################################
@@ -70,22 +83,8 @@ void setup() {
     Serial.println("Starting up...");
 
     // -- Initializing the configuration.
-    for (int t = 0; t < TURNOUT_COUNT; t++) {
-        int tNr = t + 1;
-
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%s%i%s", "Turnout ", tNr, " straight");
-
-        char buf2[24];
-        snprintf(buf2, sizeof(buf2), "%s%i", "turnoutStraight", t);
-
-        Serial.println(buf);
-        Serial.println(buf2);
-
-        turnoutParams[t][0] = new IotWebConfNumberParameter(buf, buf2, turnoutParamValues[t][0], 16, "701", "1..1500", "min='1' max='1500' step='1'");
-
-        groupTurnout.addItem(turnoutParams[t][0]);
-    }
+    groupTurnout.addItem(&turnoutStraightParam);
+    groupTurnout.addItem(&turnoutDivParam);
 
     Serial.println("turnouts added");
     iotWebConf.addParameterGroup(&groupTurnout);
@@ -94,10 +93,7 @@ void setup() {
     iotWebConf.setConfigSavedCallback(&configSaved);
     iotWebConf.setStatusPin(LED_BUILTIN);
     // iotWebConf.setConfigPin(D5);
-
-    Serial.println("init web config");
     iotWebConf.init();
-    Serial.println("init done");
 
     // -- Set up required URL handlers on the web server.
     server.on("/", handleRoot);
@@ -108,6 +104,8 @@ void setup() {
 
     //   iotWebConf.getSystemParameterGroup()->applyDefaultValue();
     //   iotWebConf.saveConfig();
+
+    parseTurnoutValues();
 }
 
 // ### Main ###################################################################
@@ -152,25 +150,86 @@ void handleRoot() {
     }
     String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" "
                "content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
-    s += "<title>IotWebConf 03 Custom Parameters</title></head><body>Hello world!";
-    s += "<ul>";
-    s += "<li>String param value: ";
-    s += "NOT IN USE";
+    s += "<title>Turnout configuration</title></head><body>Turnout settings";
+    s += "<br>";
 
-    // -- Initializing the configuration.
-    //    for (int t = 0; t < TURNOUT_COUNT; t++) {
-    // int tNr = t + 1;
+    s += "<table>";
+    s += "  <tr>";
+    s += "    <th>Turnout #</th>";
+    s += "    <th>Straight Value</th>";
+    s += "    <th>Divergent Value</th>";
+    s += "  </tr>";
 
-    // s += "<li>Turnout straight: ";
-    //         s += ": " + atoi(turnoutParamValues[t][0]);
+    for (int t = 0; t < TURNOUT_COUNT; t++) {
+        s += "  <tr>";
 
-    //       s += "<li>Turnout turn: " + tNr;
-    //        s += ": " + atoi(turnoutParamValues[t][1]);
-    //    }
+        char buff[5];
+        sprintf(buff, "%i", (t + 1));
+        s += "    <td>";
+        s += buff;
+        s += "    </td>";
 
-    s += "</ul>";
+        sprintf(buff, "%i", turnoutParamValues[t][0]);
+        s += "    <td>";
+        s += buff;
+        s += "    </td>";
+
+        sprintf(buff, "%i", turnoutParamValues[t][1]);
+        s += "    <td>";
+        s += buff;
+        s += "    </td>";
+
+        s += "  </tr>";
+    }
+
+    s += "</table>";
+
+    s += "<br>";
     s += "Go to <a href='config'>configure page</a> to change values.";
     s += "</body></html>\n";
 
     server.send(200, "text/html", s);
+}
+
+void parseTurnoutValues() {
+
+    // parse straight values
+    Serial.print("parse straight values: ");
+    Serial.println(turnoutStraightParamValue);
+
+    char straightValuesCopy[40];
+    strcpy(straightValuesCopy, turnoutStraightParamValue);
+
+    char *ptr = strtok(straightValuesCopy, ",");
+    int i = 0;
+    while (ptr) {
+        turnoutParamValues[i][0] = atoi(ptr);
+        ptr = strtok(NULL, ",");
+        i++;
+    }
+
+    // parse divergent values
+    Serial.print("parse divergent values: ");
+    Serial.println(turnoutDivParamValue);
+
+    char divValuesCopy[40];
+    strcpy(divValuesCopy, turnoutDivParamValue);
+
+    ptr = strtok(divValuesCopy, ",");
+    i = 0;
+    while (ptr) {
+        turnoutParamValues[i][1] = atoi(ptr);
+        ptr = strtok(NULL, ",");
+        i++;
+    }
+
+    // print parsed values for debug reasons
+    for (int t = 0; t < TURNOUT_COUNT; t++) {
+        Serial.print("turnout: ");
+        Serial.print((t + 1));
+        Serial.print(": straight: ");
+        Serial.print(turnoutParamValues[t][0]);
+        Serial.print(", divergent: ");
+        Serial.println(turnoutParamValues[t][1]);
+    }
 }
